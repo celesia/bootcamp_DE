@@ -58,19 +58,50 @@ API (api-sales-gamma.vercel.app)
 
 1. Todo `src/ddl/*.sql`, en cualquier orden (usan `IF NOT EXISTS`).
 2. `src/etl/etl_extraer_api_a_landing.py`
-3. `src/etl/etl_landing_a_bronze.py`
-4. `src/etl/etl_calidad_bronze.py`
-5. (Opcional, exploratorio) `src/eda/eda_bronze_ventas.py`
-6. `src/etl/etl_bronze_a_silver.py`
-7. `src/etl/etl_calidad_silver.py`
-8. `src/etl/etl_gold_dim_tiempo.py`, `etl_gold_dim_sucursal.py`, `etl_gold_dim_producto_scd2.py`, `etl_gold_dim_empleado_scd2.py`, `etl_gold_dim_transaccion.py` — sin dependencia entre sí, se pueden correr en cualquier orden o en paralelo
-9. `src/etl/etl_gold_fact_ventas.py` (recién después de las 5 dimensiones)
-10. `src/etl/etl_calidad_gold.py`
+3. `src/etl/etl_landing_a_bronze.sql`
+4. `src/etl/etl_calidad_bronze.sql`
+5. (Opcional, exploratorio) `src/eda/eda_bronze_ventas.sql`
+6. `src/etl/etl_bronze_a_silver.sql`
+7. `src/etl/etl_calidad_silver.sql`
+8. `etl_gold_dim_tiempo.sql`, `etl_gold_dim_sucursal.sql`, `etl_gold_dim_producto_scd2.sql`, `etl_gold_dim_empleado_scd2.sql`, `etl_gold_dim_transaccion.sql` — sin dependencia entre sí, se pueden correr en cualquier orden o en paralelo
+9. `src/etl/etl_gold_fact_ventas.sql` (recién después de las 5 dimensiones)
+10. `src/etl/etl_calidad_gold.sql`
 11. Verificar las vistas de `semantica` (al final de `ddl_semantica_vistas.sql`)
 
 ### Workflow automatizado
 
-Crear un Job en Databricks Workflows con una tarea por notebook, encadenadas según el orden de arriba (las 5 dimensiones como tareas paralelas dependiendo todas de `etl_calidad_silver`, y `etl_gold_fact_ventas` dependiendo de las 5). Programado diario. Cada tarea de `calidad_*` corta la cadena si falla.
+Crear un Job en Databricks Workflows con una tarea por notebook, encadenadas según el orden de arriba (las 5 dimensiones como tareas paralelas dependiendo todas de `etl_calidad_silver`, y `etl_gold_fact_ventas` dependiendo de las 5). Programado diario. A cada tarea SQL se le pasa el parámetro `run_id` con el valor `{{job.run_id}}`. Cada tarea de `calidad_*` corta la cadena si falla.
+
+## Por qué SQL puro
+
+Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spark.sql()` desde Python. Las piezas que suelen resolverse con Python se hacen con SQL nativo:
+
+| Necesidad | Cómo se resuelve en SQL |
+|---|---|
+| Leer JSON con schema forzado a STRING | `read_files(..., format => 'json', schema => '...')` |
+| Saber de qué archivo vino cada fila | `_metadata.file_path` |
+| Pasar el `run_id` del Job | `CREATE WIDGET` + `:run_id` |
+| Cortar el Job si falla un control de calidad | `assert_true(condición, 'mensaje')` |
+| Pasos intermedios validables | Vistas temporales, una por transformación |
+
+Solo dos notebooks siguen en Python, porque hacen un pedido HTTP y SQL no puede llamar a una API externa: `etl_setup_secret_scope.py` (crea el secret scope) y `etl_extraer_api_a_landing.py` (pide los datos a la API y guarda el JSON tal cual). Ninguno de los dos transforma datos.
+
+## Verificación
+
+Se corrió el pipeline completo con Spark local y Delta, con modo ANSI activado igual que serverless, contra datos reales de la API (del 1 al 26 de septiembre de 2026):
+
+| Resultado | Valor |
+|---|---|
+| Filas en bronze | 3.610 |
+| Filas en silver (después de deduplicar) | 3.580 |
+| Filas en `fact_ventas` | 3.505 |
+| Excluidas por `cantidad <= 0` en ventas aprobadas | 75 |
+| Productos con historial de precio (SCD 2) | 16 de 16 |
+| Vendedores con traslado de sucursal (SCD 2) | 3 |
+| Controles de calidad | Todos en verde |
+| Segunda corrida completa | Mismos conteos (idempotente) |
+
+**Limitación conocida:** la API no manda un número de línea dentro del ticket. Cuando un mismo ticket tiene dos líneas del mismo producto con la misma cantidad y el mismo descuento, silver no puede distinguirlas de un duplicado de ingesta y se queda con una sola. Medido contra el generador: de las 30 filas descartadas, 12 eran duplicados reales y 18 eran ventas legítimas (0,5% del total).
 
 ## Datos de la fuente
 

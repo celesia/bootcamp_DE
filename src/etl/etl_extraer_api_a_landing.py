@@ -2,61 +2,60 @@
 # MAGIC %md
 # MAGIC # ETL · Extraer de la API hacia landing
 # MAGIC
-# MAGIC Primera tarea del Job. Decide sola si hace falta un backfill (primera vez,
-# MAGIC sin watermark) o una carga incremental (ya hay watermark), trocea el rango
-# MAGIC en ventanas de ≤31 días (límite de la API) y escribe un archivo JSON por
-# MAGIC ventana en el volumen de landing.
+# MAGIC **Este es uno de los dos únicos notebooks en Python del proyecto.** El
+# MAGIC resto es SQL puro. Acá no hay forma de evitarlo: hay que hacer un pedido
+# MAGIC HTTP a la API de ventas, y SQL no puede llamar a una API externa. El
+# MAGIC Python se limita a eso: pedir los datos y guardar el JSON tal cual llega.
+# MAGIC No transforma nada ni usa Spark.
+# MAGIC
+# MAGIC **Cómo decide qué pedir.** Mira qué rangos de fechas ya están en el
+# MAGIC volumen de landing, leyendo los nombres de archivo
+# MAGIC (`ventas_<desde>_<hasta>.json`):
+# MAGIC - Si el volumen está vacío, es la primera vez: pide todo desde la apertura (backfill).
+# MAGIC - Si ya hay archivos, pide desde el día siguiente al último `hasta` (incremental).
+# MAGIC - Nunca pide el día de hoy, que todavía tiene datos parciales: el techo es ayer.
+# MAGIC - Parte el rango en ventanas de 31 días como máximo, el límite de la API.
 # MAGIC
 # MAGIC El nombre del archivo sale de las fechas pedidas, no de la hora de la
-# MAGIC corrida — pedir el mismo rango dos veces sobreescribe el mismo archivo con
-# MAGIC el mismo contenido (la API es determinista), no acumula copias.
+# MAGIC corrida. Pedir el mismo rango dos veces sobreescribe el mismo archivo con el
+# MAGIC mismo contenido (la API es determinista), no acumula copias.
 # MAGIC
-# MAGIC **No actualiza el watermark acá** — eso pasa recién en `etl_landing_a_bronze.py`,
-# MAGIC después de confirmar que la carga a bronze funcionó.
+# MAGIC Si un archivo llegó a landing pero la carga a bronze falló, no se pierde:
+# MAGIC `etl_landing_a_bronze.sql` carga cualquier archivo que todavía no esté en
+# MAGIC bronze, sea de esta corrida o de una anterior.
 
 # COMMAND ----------
 
-dbutils.widgets.text("run_id", "manual", "ID de la corrida (el Job le pasa {{job.run_id}})")
-RUN_ID = dbutils.widgets.get("run_id") or "manual"
-
-CATALOGO = "kiosco_la_esquina"
-API_BASE = "https://api-sales-gamma.vercel.app"
-APERTURA = "2026-09-01"
-TOPE_DIAS_API = 31
-VOLUMEN = f"/Volumes/{CATALOGO}/landing/raw_ventas"
-
-# COMMAND ----------
+import re
+from datetime import date, timedelta
 
 import requests
-from datetime import date, timedelta
+
+API_BASE = "https://api-sales-gamma.vercel.app"
+APERTURA = date(2026, 9, 1)
+TOPE_DIAS_API = 31
+VOLUMEN = "/Volumes/kiosco_la_esquina/landing/raw_ventas"
 
 api_key = dbutils.secrets.get(scope="kiosco_secrets", key="api_key")
 
 # COMMAND ----------
 
-def rango_a_cargar():
-    """Devuelve (desde, hasta) según el watermark, o None si no hay nada nuevo."""
-    fila = spark.sql(f"""
-        SELECT fecha_hasta_cargada
-        FROM {CATALOGO}.ops.watermark_ingesta
-        WHERE fuente = 'api_ventas'
-    """).first()
+# MAGIC %md ### ¿Desde qué fecha hay que pedir?
 
-    hoy = date.today()
-    techo = hoy - timedelta(days=1)  # nunca pedir el día en curso (datos parciales)
+# COMMAND ----------
 
-    if fila is None:
-        desde = date.fromisoformat(APERTURA)
-    else:
-        desde = fila["fecha_hasta_cargada"] + timedelta(days=1)
-
-    if desde > techo:
-        return None  # ya está todo cargado, no hay nada nuevo
-    return desde, techo
+def ultimo_hasta_en_landing():
+    """Devuelve el `hasta` más reciente entre los archivos de landing, o None si está vacío."""
+    fechas = []
+    for archivo in dbutils.fs.ls(VOLUMEN):
+        encontrado = re.search(r"_(\d{4}-\d{2}-\d{2})\.json$", archivo.name)
+        if encontrado:
+            fechas.append(date.fromisoformat(encontrado.group(1)))
+    return max(fechas) if fechas else None
 
 
-def trocear(desde: date, hasta: date, max_dias: int = TOPE_DIAS_API):
-    """Parte un rango en ventanas de a lo sumo max_dias, respetando el límite de la API."""
+def trocear(desde, hasta, max_dias=TOPE_DIAS_API):
+    """Parte un rango en ventanas de a lo sumo max_dias, el límite de la API."""
     ventanas = []
     inicio = desde
     while inicio <= hasta:
@@ -65,21 +64,25 @@ def trocear(desde: date, hasta: date, max_dias: int = TOPE_DIAS_API):
         inicio = fin + timedelta(days=1)
     return ventanas
 
-# COMMAND ----------
 
-rango = rango_a_cargar()
+ultimo = ultimo_hasta_en_landing()
+desde = APERTURA if ultimo is None else ultimo + timedelta(days=1)
+hasta = date.today() - timedelta(days=1)
 
-if rango is None:
-    print("No hay datos nuevos que pedir: el watermark ya está al día.")
+print(f"Último día ya en landing: {ultimo or 'ninguno (primera corrida, backfill)'}")
+
+if desde > hasta:
+    print("No hay días nuevos que pedir.")
     dbutils.notebook.exit("sin_datos_nuevos")
 
-desde, hasta = rango
 ventanas = trocear(desde, hasta)
-print(f"Rango total a pedir: {desde} -> {hasta}, en {len(ventanas)} ventana(s)")
+print(f"A pedir: {desde} -> {hasta}, en {len(ventanas)} ventana(s)")
 
 # COMMAND ----------
 
-archivos_escritos = []
+# MAGIC %md ### Pedir a la API y guardar el JSON crudo
+
+# COMMAND ----------
 
 for v_desde, v_hasta in ventanas:
     resp = requests.get(
@@ -88,26 +91,12 @@ for v_desde, v_hasta in ventanas:
         headers={"X-API-Key": api_key},
         timeout=60,
     )
-    resp.raise_for_status()  # si la API devuelve error, cortar acá y que falle la tarea del Job
+    resp.raise_for_status()  # si la API devuelve error, la tarea del Job falla acá
 
-    nombre_archivo = f"ventas_{v_desde.isoformat()}_{v_hasta.isoformat()}.json"
-    ruta = f"{VOLUMEN}/{nombre_archivo}"
-
-    dbutils.fs.put(ruta, resp.text, overwrite=True)  # overwrite=True: mismo rango -> mismo archivo
-    archivos_escritos.append(ruta)
+    ruta = f"{VOLUMEN}/ventas_{v_desde.isoformat()}_{v_hasta.isoformat()}.json"
+    dbutils.fs.put(ruta, resp.text, overwrite=True)
     print(f"  {v_desde} -> {v_hasta}: {resp.json()['meta']['filas']} filas -> {ruta}")
 
-print(f"\n{len(archivos_escritos)} archivo(s) escritos en landing")
-
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC No hace falta avisarle al siguiente notebook qué archivos son nuevos:
-# MAGIC `etl_landing_a_bronze.py` decide eso solo, comparando el volumen contra lo
-# MAGIC que ya hay en bronze — así cada notebook se puede correr de forma
-# MAGIC independiente, sin depender de que el anterior haya corrido en la misma
-# MAGIC sesión.
-
-# COMMAND ----------
-
-dbutils.notebook.exit(f"ok: {len(archivos_escritos)} archivo(s) escritos, hasta {hasta.isoformat()}")
+dbutils.notebook.exit(f"ok: {len(ventanas)} archivo(s) escritos, hasta {hasta.isoformat()}")

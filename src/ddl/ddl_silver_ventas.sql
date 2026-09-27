@@ -3,7 +3,7 @@
 -- MAGIC # DDL · Silver
 -- MAGIC
 -- MAGIC Datos limpios, tipados y deduplicados — la fuente de verdad del proyecto.
--- MAGIC Se carga con `MERGE` (ver `etl_bronze_a_silver.py`), nunca con `INSERT` puro.
+-- MAGIC Se carga con `MERGE` (ver `etl_bronze_a_silver.sql`), nunca con `INSERT` puro.
 -- MAGIC
 -- MAGIC `row_hash` es la clave de deduplicación: MD5 de
 -- MAGIC `ticket_id + producto_id + fecha_hora + cantidad + precio_unitario + metodo_pago`.

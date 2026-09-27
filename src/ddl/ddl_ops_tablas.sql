@@ -6,7 +6,7 @@
 -- MAGIC
 -- MAGIC | Tabla | Para qué |
 -- MAGIC |---|---|
--- MAGIC | `watermark_ingesta` | Hasta qué fecha ya se cargó, para que la ingesta sepa si hacer backfill o incremental |
+-- MAGIC | `watermark_ingesta` | Hasta qué fecha está confirmada en bronze. Registro de auditoría de cada carga |
 -- MAGIC | `log_calidad` | Historial de cada control de calidad ejecutado, con su resultado |
 
 -- COMMAND ----------
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS kiosco_la_esquina.ops.log_calidad (
   capa            STRING    COMMENT 'bronze | silver | gold',
   chequeo         STRING    COMMENT 'Nombre corto del control',
   descripcion     STRING,
-  severidad       STRING    COMMENT 'FAIL corta la cadena del Job; WARN solo queda registrado',
+  severidad       STRING    COMMENT 'FAIL corta la cadena del Job. WARN solo queda registrado',
   filas_afectadas BIGINT,
   ok              BOOLEAN,
   ejecutado_en    TIMESTAMP
