@@ -115,7 +115,7 @@ resources:
 
       # El Job le pasa este parámetro a todas las tareas. Los notebooks SQL
       # lo reciben en su widget run_id y lo usan para identificar la corrida
-      # en bronze, en el watermark y en ops.log_calidad.
+      # en bronze y en ops.log_calidad.
       parameters:
         - name: run_id
           default: "{{job.run_id}}"

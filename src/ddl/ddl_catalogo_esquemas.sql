@@ -12,7 +12,7 @@
 -- MAGIC | `silver` | Datos limpios, tipados y deduplicados — fuente de verdad |
 -- MAGIC | `gold` | Modelo dimensional (esquema estrella + junk dimension) |
 -- MAGIC | `semantica` | Vistas de solo lectura para consultas de negocio |
--- MAGIC | `ops` | Watermark de la ingesta y log de calidad |
+-- MAGIC | `ops` | Log de los controles de calidad |
 
 -- COMMAND ----------
 
@@ -37,7 +37,7 @@ CREATE SCHEMA IF NOT EXISTS kiosco_la_esquina.semantica
 COMMENT 'Vistas de solo lectura sobre gold. Nunca tablas, nunca escritura';
 
 CREATE SCHEMA IF NOT EXISTS kiosco_la_esquina.ops
-COMMENT 'Control del pipeline: watermark de ingesta y log de calidad';
+COMMENT 'Control del pipeline: log de los controles de calidad';
 
 -- COMMAND ----------
 

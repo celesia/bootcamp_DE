@@ -105,34 +105,12 @@ LATERAL VIEW EXPLODE(data) AS fila;
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### Actualizar el watermark
--- MAGIC
--- MAGIC Recién ahora, después de confirmar la carga — así un fallo entre landing
--- MAGIC y bronze nunca deja el watermark adelantado. La fecha sale del nombre de
--- MAGIC los archivos cargados en esta corrida (`ventas_<desde>_<hasta>.json`),
--- MAGIC tomando el `hasta` más reciente. Si esta corrida no cargó nada, el
--- MAGIC `WHERE m IS NOT NULL` deja la subconsulta vacía y el MERGE no toca nada.
+-- MAGIC ### Qué cargó esta corrida
+-- MAGIC Si no había archivos nuevos en landing, esto vuelve vacío y está bien.
 
 -- COMMAND ----------
 
-MERGE INTO kiosco_la_esquina.ops.watermark_ingesta AS destino
-USING (
-  SELECT 'api_ventas' AS fuente, m AS fecha_hasta_cargada
-  FROM (
-    SELECT MAX(DATE(regexp_extract(_source_file, '_([0-9]{4}-[0-9]{2}-[0-9]{2})\\.json$', 1))) AS m
-    FROM kiosco_la_esquina.bronze.ventas
-    WHERE _run_id = :run_id
-  )
-  WHERE m IS NOT NULL
-) AS origen
-ON destino.fuente = origen.fuente
-WHEN MATCHED AND origen.fecha_hasta_cargada > destino.fecha_hasta_cargada THEN UPDATE SET
-  destino.fecha_hasta_cargada = origen.fecha_hasta_cargada,
-  destino.run_id = :run_id,
-  destino.actualizado_en = current_timestamp()
-WHEN NOT MATCHED THEN INSERT (fuente, fecha_hasta_cargada, run_id, actualizado_en)
-  VALUES (origen.fuente, origen.fecha_hasta_cargada, :run_id, current_timestamp());
-
--- COMMAND ----------
-
-SELECT * FROM kiosco_la_esquina.ops.watermark_ingesta;
+SELECT _source_file, COUNT(*) AS filas
+FROM kiosco_la_esquina.bronze.ventas
+WHERE _run_id = :run_id
+GROUP BY _source_file;
