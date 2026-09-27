@@ -16,7 +16,7 @@ API (api-sales-gamma.vercel.app)
         ▼
    landing (Volumen)      JSON crudo, un archivo por rango de fechas
         ▼
-   bronze.ventas           Todo en STRING, inmutable, INSERT INTO (append)
+   bronze.ventas           Todo en STRING, inmutable, COPY INTO (solo agrega)
         ▼
    silver.ventas           Limpio, tipado, deduplicado por hash — MERGE
         ▼
@@ -28,7 +28,7 @@ API (api-sales-gamma.vercel.app)
 | Capa | Tecnología | Estrategia de carga |
 |---|---|---|
 | Landing | Volumen de Unity Catalog | Archivo nombrado por rango de fechas — determinista, no acumula copias |
-| Bronze | Delta, todo STRING | `INSERT INTO`, a propósito no idempotente (silver limpia los duplicados) |
+| Bronze | Delta, todo STRING | `COPY INTO`: solo agrega filas y recuerda qué archivos ya cargó. Las filas repetidas dentro de un archivo las limpia silver |
 | Silver | Delta, tipado | `MERGE` con dedup por hash de la línea de negocio completa |
 | Gold | Delta, modelo dimensional | `INSERT OVERWRITE` (dim_tiempo) / `MERGE` (SCD 1 y junk dim) / MERGE + INSERT en dos pasos (SCD 2) |
 | Semántica | Vistas | Solo lectura sobre gold |
@@ -102,7 +102,9 @@ Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spar
 
 | Necesidad | Cómo se resuelve en SQL |
 |---|---|
-| Leer JSON con schema forzado a STRING | `read_files(..., format => 'json', schema => '...')` |
+| Cargar archivos nuevos sin repetir los ya cargados | `COPY INTO`, que guarda la lista en el log de la tabla |
+| Leer todo el JSON como texto | `FORMAT_OPTIONS ('primitivesAsString' = 'true')` |
+| Pasar de un array por archivo a una fila por venta | `inline(data)` |
 | Saber de qué archivo vino cada fila | `_metadata.file_path` |
 | Pasar el `run_id` del Job | `CREATE WIDGET` + `:run_id` |
 | Cortar el Job si falla un control de calidad | `assert_true(condición, 'mensaje')` |

@@ -7,10 +7,11 @@
 -- MAGIC texto con coma decimal (`"260,0"`). Bronze guarda el dato tal cual llegó;
 -- MAGIC el casteo recién pasa en silver.
 -- MAGIC
--- MAGIC Es una tabla de solo `INSERT INTO` (append), a propósito no idempotente:
--- MAGIC si el pipeline se reprocesa el mismo día por error, bronze acumula esas
--- MAGIC filas repetidas sin filtrarlas — limpiar eso es trabajo de silver, no de
--- MAGIC bronze. Bronze es la fotografía cruda de todo lo que llegó, tal cual llegó.
+-- MAGIC Se carga con `COPY INTO` (ver `etl_landing_a_bronze.sql`), que solo agrega
+-- MAGIC filas y nunca modifica las que ya están. Delta recuerda qué archivos ya
+-- MAGIC cargó, así que reprocesar el mismo día no duplica nada. Lo que no hace es
+-- MAGIC filtrar filas repetidas dentro de un archivo: esas llegan tal cual y las
+-- MAGIC limpia silver. Bronze es la fotografía cruda de todo lo que llegó.
 -- MAGIC
 -- MAGIC Columnas de metadata (`_` adelante) para poder auditar cada carga.
 

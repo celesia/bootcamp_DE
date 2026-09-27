@@ -9,8 +9,8 @@
 -- MAGIC y queda como historia de todas las corridas.
 -- MAGIC
 -- MAGIC No hace falta una tabla de watermark: el pipeline sabe qué días le faltan
--- MAGIC por los nombres de archivo en landing, y qué archivos falta cargar por la
--- MAGIC columna `_source_file` de bronze.
+-- MAGIC por los nombres de archivo en landing, y qué archivos falta cargar lo
+-- MAGIC resuelve `COPY INTO`, que recuerda los archivos ya cargados en bronze.
 
 -- COMMAND ----------
 
