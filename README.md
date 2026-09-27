@@ -114,7 +114,7 @@ Solo dos notebooks siguen en Python, porque hacen un pedido HTTP y SQL no puede 
 
 ## Verificación
 
-Se corrió el pipeline completo con Spark local y Delta, con modo ANSI activado igual que serverless, contra datos reales de la API (del 1 al 26 de septiembre de 2026):
+Se corrió el pipeline completo con Spark local y Delta, con modo ANSI activado igual que serverless, contra datos reales de la API (del 1 al 26 de septiembre de 2026). La carga a bronze se probó con una versión anterior basada en `read_files()`. La actual usa `COPY INTO`, que solo existe en Databricks, así que ese paso se confirma en el workspace. Los pasos de silver en adelante son los mismos que se probaron.
 
 | Resultado | Valor |
 |---|---|
