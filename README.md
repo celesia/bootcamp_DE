@@ -54,7 +54,9 @@ API (api-sales-gamma.vercel.app)
 2. Conectar este repo como **Git folder** en el Workspace de Databricks.
 3. Correr `src/etl/etl_setup_secret_scope.py` **a mano, una sola vez** (nunca se agenda en el Job): crea el secret scope `kiosco_secrets` y guarda ahí la API key de `api_sales`.
 
-### Orden de los notebooks
+### Orden de los notebooks, si se corren a mano
+
+El Job hace esto solo. Sirve para correr y revisar cada paso por separado.
 
 1. Todo `src/ddl/*.sql`, en cualquier orden (usan `IF NOT EXISTS`).
 2. `src/etl/etl_extraer_api_a_landing.py`
@@ -66,11 +68,33 @@ API (api-sales-gamma.vercel.app)
 8. `etl_gold_dim_tiempo.sql`, `etl_gold_dim_sucursal.sql`, `etl_gold_dim_producto_scd2.sql`, `etl_gold_dim_empleado_scd2.sql`, `etl_gold_dim_transaccion.sql` — sin dependencia entre sí, se pueden correr en cualquier orden o en paralelo
 9. `src/etl/etl_gold_fact_ventas.sql` (recién después de las 5 dimensiones)
 10. `src/etl/etl_calidad_gold.sql`
-11. Verificar las vistas de `semantica` (al final de `ddl_semantica_vistas.sql`)
+11. `src/etl/etl_smoke_test_semantica.sql`
 
 ### Workflow automatizado
 
-Crear un Job en Databricks Workflows con una tarea por notebook, encadenadas según el orden de arriba (las 5 dimensiones como tareas paralelas dependiendo todas de `etl_calidad_silver`, y `etl_gold_fact_ventas` dependiendo de las 5). Programado diario. A cada tarea SQL se le pasa el parámetro `run_id` con el valor `{{job.run_id}}`. Cada tarea de `calidad_*` corta la cadena si falla.
+La orquestación está escrita como código en [`databricks.yml`](databricks.yml), un *Declarative Automation Bundle* (antes llamado Databricks Asset Bundle). Define dos Jobs:
+
+| Job | Qué hace | Cuándo corre |
+|---|---|---|
+| `kiosco_setup_ddl` | Los 12 DDL en orden: catálogo, esquemas, volumen, tablas y vistas | A mano, una sola vez |
+| `kiosco_pipeline_diario` | Los 13 pasos del pipeline, con los controles de calidad entre capas | Todos los días a las 6:00, hora de Uruguay |
+
+```
+extraer_api_a_landing → landing_a_bronze → calidad_bronze
+  → bronze_a_silver → calidad_silver
+    → [dim_tiempo, dim_sucursal, dim_producto, dim_empleado, dim_transaccion]   (5 en paralelo)
+      → fact_ventas → calidad_gold → smoke_test_semantica
+```
+
+Las 5 dimensiones corren en paralelo porque no dependen entre sí, y son justo las 5 tareas simultáneas que permite Free Edition. Todas las tareas corren en compute serverless y reciben el parámetro `run_id` con el valor `{{job.run_id}}`. La extracción tiene un reintento, que es seguro porque el archivo de landing se llama por rango de fechas.
+
+**Cómo desplegarlo, sin instalar nada:**
+1. En el Git folder del workspace, abrir `databricks.yml`.
+2. Hacer clic en el ícono de *deployments*, elegir el target `dev` y apretar **Deploy**. Confirmar con **Deploy** otra vez.
+3. En el panel **Bundle resources**, correr `kiosco_setup_ddl` con el ícono de play. Una sola vez.
+4. Correr `kiosco_pipeline_diario` para la primera carga. Desde ahí corre solo todos los días.
+
+Si la opción de desplegar bundles no aparece en Free Edition, el plan B es crear los dos Jobs a mano en **Jobs & Pipelines**, copiando las tareas y dependencias de `databricks.yml`.
 
 ## Por qué SQL puro
 

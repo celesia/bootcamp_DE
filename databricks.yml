@@ -1,0 +1,201 @@
+# Orquestación del proyecto como código (Declarative Automation Bundle,
+# antes llamado Databricks Asset Bundle).
+#
+# Define dos Jobs:
+#   - kiosco_setup: crea catálogo, esquemas, volumen, tablas y vistas.
+#     Se corre a mano UNA sola vez, antes de la primera corrida del pipeline.
+#   - kiosco_pipeline: el pipeline completo, programado todos los días.
+#
+# Se despliega desde el Git folder del workspace (botón "Deploy" del
+# bundle), sin instalar nada. Ninguna tarea declara cluster: todas corren
+# en compute serverless.
+#
+# El secret scope de la API key NO está acá: se crea a mano una sola vez
+# con src/etl/etl_setup_secret_scope.py, porque pide pegar la key.
+
+bundle:
+  name: kiosco_la_esquina
+
+resources:
+  jobs:
+
+    # ------------------------------------------------------------------
+    # Setup: solo DDL. En serie a propósito: se corre una vez, la
+    # velocidad no importa, y así el catálogo y los esquemas existen
+    # antes que las tablas, y las tablas de gold antes que las vistas.
+    # ------------------------------------------------------------------
+    kiosco_setup:
+      name: kiosco_setup_ddl
+      description: >
+        Crea catálogo, esquemas, volumen de landing, tablas y vistas.
+        Correr a mano una sola vez. Todo usa IF NOT EXISTS, así que
+        volver a correrlo no rompe nada.
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: ddl_catalogo_esquemas
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_catalogo_esquemas.sql
+
+        - task_key: ddl_landing_volumen
+          depends_on: [{ task_key: ddl_catalogo_esquemas }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_landing_volumen.sql
+
+        - task_key: ddl_ops_tablas
+          depends_on: [{ task_key: ddl_landing_volumen }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_ops_tablas.sql
+
+        - task_key: ddl_bronze_ventas
+          depends_on: [{ task_key: ddl_ops_tablas }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_bronze_ventas.sql
+
+        - task_key: ddl_silver_ventas
+          depends_on: [{ task_key: ddl_bronze_ventas }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_silver_ventas.sql
+
+        - task_key: ddl_gold_dim_tiempo
+          depends_on: [{ task_key: ddl_silver_ventas }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_dim_tiempo.sql
+
+        - task_key: ddl_gold_dim_sucursal
+          depends_on: [{ task_key: ddl_gold_dim_tiempo }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_dim_sucursal.sql
+
+        - task_key: ddl_gold_dim_producto
+          depends_on: [{ task_key: ddl_gold_dim_sucursal }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_dim_producto.sql
+
+        - task_key: ddl_gold_dim_empleado
+          depends_on: [{ task_key: ddl_gold_dim_producto }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_dim_empleado.sql
+
+        - task_key: ddl_gold_dim_transaccion
+          depends_on: [{ task_key: ddl_gold_dim_empleado }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_dim_transaccion.sql
+
+        - task_key: ddl_gold_fact_ventas
+          depends_on: [{ task_key: ddl_gold_dim_transaccion }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_gold_fact_ventas.sql
+
+        - task_key: ddl_semantica_vistas
+          depends_on: [{ task_key: ddl_gold_fact_ventas }]
+          notebook_task:
+            notebook_path: ./src/ddl/ddl_semantica_vistas.sql
+
+    # ------------------------------------------------------------------
+    # Pipeline diario.
+    #
+    # Las 5 dimensiones no dependen entre sí y corren en paralelo: son
+    # exactamente las 5 tareas simultáneas que permite Free Edition. La
+    # fact espera a las 5 (orden Kimball). Cada tarea de calidad hace
+    # assert_true(): si falla, corta la cadena y la capa siguiente no corre.
+    # ------------------------------------------------------------------
+    kiosco_pipeline:
+      name: kiosco_pipeline_diario
+      description: >
+        API de ventas -> landing -> bronze -> silver -> gold -> semántica,
+        con controles de calidad entre capas.
+      max_concurrent_runs: 1
+
+      # Todos los días a las 6 de la mañana, hora de Uruguay. La extracción
+      # pide hasta ayer, así que a esa hora el día anterior ya está cerrado.
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: America/Montevideo
+        pause_status: UNPAUSED
+
+      # El Job le pasa este parámetro a todas las tareas. Los notebooks SQL
+      # lo reciben en su widget run_id y lo usan para identificar la corrida
+      # en bronze, en el watermark y en ops.log_calidad.
+      parameters:
+        - name: run_id
+          default: "{{job.run_id}}"
+
+      tasks:
+        - task_key: extraer_api_a_landing
+          description: Pide a la API los días que faltan y guarda el JSON crudo en landing.
+          notebook_task:
+            notebook_path: ./src/etl/etl_extraer_api_a_landing.py
+          # Un reintento si la API falla por algo transitorio. Es seguro
+          # reintentar: el archivo de landing se llama por rango de fechas,
+          # así que repetir el pedido sobreescribe el mismo archivo.
+          max_retries: 1
+          min_retry_interval_millis: 300000
+
+        - task_key: landing_a_bronze
+          depends_on: [{ task_key: extraer_api_a_landing }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_landing_a_bronze.sql
+
+        - task_key: calidad_bronze
+          depends_on: [{ task_key: landing_a_bronze }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_calidad_bronze.sql
+
+        - task_key: bronze_a_silver
+          depends_on: [{ task_key: calidad_bronze }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_bronze_a_silver.sql
+
+        - task_key: calidad_silver
+          depends_on: [{ task_key: bronze_a_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_calidad_silver.sql
+
+        - task_key: gold_dim_tiempo
+          depends_on: [{ task_key: calidad_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_dim_tiempo.sql
+
+        - task_key: gold_dim_sucursal
+          depends_on: [{ task_key: calidad_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_dim_sucursal.sql
+
+        - task_key: gold_dim_producto
+          depends_on: [{ task_key: calidad_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_dim_producto_scd2.sql
+
+        - task_key: gold_dim_empleado
+          depends_on: [{ task_key: calidad_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_dim_empleado_scd2.sql
+
+        - task_key: gold_dim_transaccion
+          depends_on: [{ task_key: calidad_silver }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_dim_transaccion.sql
+
+        - task_key: gold_fact_ventas
+          depends_on:
+            - task_key: gold_dim_tiempo
+            - task_key: gold_dim_sucursal
+            - task_key: gold_dim_producto
+            - task_key: gold_dim_empleado
+            - task_key: gold_dim_transaccion
+          notebook_task:
+            notebook_path: ./src/etl/etl_gold_fact_ventas.sql
+
+        - task_key: calidad_gold
+          depends_on: [{ task_key: gold_fact_ventas }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_calidad_gold.sql
+
+        - task_key: smoke_test_semantica
+          depends_on: [{ task_key: calidad_gold }]
+          notebook_task:
+            notebook_path: ./src/etl/etl_smoke_test_semantica.sql
+
+targets:
+  dev:
+    default: true
