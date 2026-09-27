@@ -6,8 +6,8 @@
 -- MAGIC `row_hash` se hereda directamente de silver como clave primaria de la
 -- MAGIC fact — el grano no cambia entre silver y gold, solo se excluyen las
 -- MAGIC filas de `cantidad = 0` con `estado_venta = 'aprobada'` (dato sucio, no
--- MAGIC una venta real), y esa exclusión queda registrada en `ops.log_calidad`
--- MAGIC para que sea auditable.
+-- MAGIC una venta real). El control de reconciliación de gold verifica que la
+-- MAGIC diferencia entre silver y la fact sea exactamente esa exclusión.
 -- MAGIC
 -- MAGIC `ticket_id` es una dimensión degenerada: no amerita tabla propia porque
 -- MAGIC es prácticamente único por fila, así que se queda directo en la fact.

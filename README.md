@@ -76,7 +76,7 @@ La orquestación está escrita como código en [`databricks.yml`](databricks.yml
 
 | Job | Qué hace | Cuándo corre |
 |---|---|---|
-| `kiosco_setup_ddl` | Los 12 DDL en orden: catálogo, esquemas, volumen, tablas y vistas | A mano, una sola vez |
+| `kiosco_setup_ddl` | Los 11 DDL en orden: catálogo, esquemas, volumen, tablas y vistas | A mano, una sola vez |
 | `kiosco_pipeline_diario` | Los 13 pasos del pipeline, con los controles de calidad entre capas | Todos los días a las 6:00, hora de Uruguay |
 
 ```

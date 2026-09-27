@@ -12,11 +12,8 @@
 -- MAGIC
 -- MAGIC Regla de negocio: `cantidad <= 0` con `estado_venta = 'aprobada'` se
 -- MAGIC excluye acá (dato sucio, no una venta real). Silver la conserva, gold no.
--- MAGIC La cantidad excluida queda en `ops.log_calidad` para que sea auditable.
-
--- COMMAND ----------
-
-CREATE WIDGET TEXT run_id DEFAULT "manual";
+-- MAGIC La última celda muestra cuántas se excluyeron, y `etl_calidad_gold.sql`
+-- MAGIC controla que silver menos la fact dé exactamente esa cantidad.
 
 -- COMMAND ----------
 
@@ -79,21 +76,11 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- COMMAND ----------
 
--- MAGIC %md ### Registrar la exclusión en el log de calidad
+-- MAGIC %md ### Resumen de la carga
 
 -- COMMAND ----------
 
-INSERT INTO kiosco_la_esquina.ops.log_calidad
 SELECT
-  :run_id, 'gold', 'exclusion_cantidad_cero_aprobada',
-  'Filas con cantidad<=0 y estado=aprobada excluidas de fact_ventas (se conservan en silver)',
-  'WARN',
-  COUNT(*),
-  true,
-  current_timestamp()
-FROM kiosco_la_esquina.silver.ventas
-WHERE cantidad <= 0 AND estado_venta = 'aprobada';
-
--- COMMAND ----------
-
-SELECT COUNT(*) AS filas_en_fact FROM kiosco_la_esquina.gold.fact_ventas;
+  (SELECT COUNT(*) FROM kiosco_la_esquina.gold.fact_ventas) AS filas_en_fact,
+  (SELECT COUNT(*) FROM kiosco_la_esquina.silver.ventas
+   WHERE cantidad <= 0 AND estado_venta = 'aprobada')      AS excluidas_por_cantidad_invalida;

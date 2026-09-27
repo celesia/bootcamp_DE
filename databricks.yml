@@ -41,13 +41,8 @@ resources:
           notebook_task:
             notebook_path: ./src/ddl/ddl_landing_volumen.sql
 
-        - task_key: ddl_ops_tablas
-          depends_on: [{ task_key: ddl_landing_volumen }]
-          notebook_task:
-            notebook_path: ./src/ddl/ddl_ops_tablas.sql
-
         - task_key: ddl_bronze_ventas
-          depends_on: [{ task_key: ddl_ops_tablas }]
+          depends_on: [{ task_key: ddl_landing_volumen }]
           notebook_task:
             notebook_path: ./src/ddl/ddl_bronze_ventas.sql
 
@@ -113,9 +108,9 @@ resources:
         timezone_id: America/Montevideo
         pause_status: UNPAUSED
 
-      # El Job le pasa este parámetro a todas las tareas. Los notebooks SQL
-      # lo reciben en su widget run_id y lo usan para identificar la corrida
-      # en bronze y en ops.log_calidad.
+      # El Job le pasa este parámetro a todas las tareas. Lo usa la carga a
+      # bronze, que lo guarda en la columna _run_id de cada fila para saber
+      # qué corrida la cargó. Las tareas que no lo usan lo ignoran.
       parameters:
         - name: run_id
           default: "{{job.run_id}}"

@@ -12,7 +12,6 @@
 -- MAGIC | `silver` | Datos limpios, tipados y deduplicados — fuente de verdad |
 -- MAGIC | `gold` | Modelo dimensional (esquema estrella + junk dimension) |
 -- MAGIC | `semantica` | Vistas de solo lectura para consultas de negocio |
--- MAGIC | `ops` | Log de los controles de calidad |
 
 -- COMMAND ----------
 
@@ -36,13 +35,10 @@ COMMENT 'Modelo dimensional: dimensiones + fact, listo para consultarse sin tran
 CREATE SCHEMA IF NOT EXISTS kiosco_la_esquina.semantica
 COMMENT 'Vistas de solo lectura sobre gold. Nunca tablas, nunca escritura';
 
-CREATE SCHEMA IF NOT EXISTS kiosco_la_esquina.ops
-COMMENT 'Control del pipeline: log de los controles de calidad';
-
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC Verificación rápida: tienen que aparecer los 6 esquemas.
+-- MAGIC Verificación rápida: tienen que aparecer los 5 esquemas.
 
 -- COMMAND ----------
 
