@@ -52,7 +52,14 @@ API (api-sales-gamma.vercel.app)
 
 1. **Verificar identidad con LinkedIn** en Databricks Free Edition (perfil → verificación), si todavía no está hecho — sin esto, el acceso saliente a internet está restringido y la ingesta no va a poder llamar a la API.
 2. Conectar este repo como **Git folder** en el Workspace de Databricks.
-3. Correr `src/etl/etl_setup_secret_scope.py` **a mano, una sola vez** (nunca se agenda en el Job): crea el secret scope `kiosco_secrets` y guarda ahí la API key de `api_sales`.
+3. **Guardar la API key de `api_sales` en un secret scope**, para que no quede escrita en el código. Se hace a mano, una sola vez:
+   1. Crear el scope desde la página `https://<tu-workspace>#secrets/createScope`, que no aparece en ningún menú. Nombre: `kiosco_secrets`. La `S` de `createScope` va en mayúscula.
+   2. Databricks no tiene pantalla para cargar el valor del secreto. Crear un notebook Python suelto, **fuera** de este Git folder, y correr:
+      ```python
+      from databricks.sdk import WorkspaceClient
+      WorkspaceClient().secrets.put_secret(scope="kiosco_secrets", key="api_key", string_value="<la API key>")
+      ```
+   3. Verificar con `dbutils.secrets.list("kiosco_secrets")`: tiene que aparecer `api_key`. Después, borrar ese notebook suelto, porque tiene la key escrita.
 
 ### Orden de los notebooks, si se corren a mano
 
@@ -110,7 +117,7 @@ Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spar
 | Cortar el Job si falla un control de calidad | `assert_true(condición, 'mensaje')` |
 | Pasos intermedios validables | Vistas temporales, una por transformación |
 
-Solo dos notebooks siguen en Python, porque hacen un pedido HTTP y SQL no puede llamar a una API externa: `etl_setup_secret_scope.py` (crea el secret scope) y `etl_extraer_api_a_landing.py` (pide los datos a la API y guarda el JSON tal cual). Ninguno de los dos transforma datos.
+Solo un notebook sigue en Python: `etl_extraer_api_a_landing.py`, que pide los datos a la API y guarda el JSON tal cual. Hace un pedido HTTP, y SQL no puede llamar a una API externa. No transforma datos.
 
 ## Verificación
 

@@ -10,8 +10,8 @@
 # bundle), sin instalar nada. Ninguna tarea declara cluster: todas corren
 # en compute serverless.
 #
-# El secret scope de la API key NO está acá: se crea a mano una sola vez
-# con src/etl/etl_setup_secret_scope.py, porque pide pegar la key.
+# El secret scope con la API key NO está acá: se crea a mano en el
+# workspace, una sola vez, siguiendo los pasos del README.
 
 bundle:
   name: kiosco_la_esquina
