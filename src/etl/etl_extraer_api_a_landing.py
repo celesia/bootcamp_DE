@@ -36,7 +36,9 @@ APERTURA = date(2026, 9, 1)
 TOPE_DIAS_API = 31
 VOLUMEN = "/Volumes/kiosco_la_esquina/landing/raw_ventas"
 
-api_key = dbutils.secrets.get(scope="kiosco_secrets", key="api_key")
+# La API key es un secreto de Unity Catalog: kiosco_la_esquina.landing.api_key_ventas.
+# Se crea a mano desde Catalog (ver README). Databricks la muestra como [REDACTED].
+api_key = dbutils.secrets.get(catalog="kiosco_la_esquina", schema="landing", key="api_key_ventas")
 
 # COMMAND ----------
 

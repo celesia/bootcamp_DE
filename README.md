@@ -12,7 +12,7 @@ Ingiere las ventas diarias desde una API propia ([`api_sales`](https://github.co
 
 ```
 API (api-sales-gamma.vercel.app)
-        │  GET /ventas?desde=&hasta=  (autenticado con API key, Databricks Secrets)
+        │  GET /ventas?desde=&hasta=  (API key guardada como secreto de Unity Catalog)
         ▼
    landing (Volumen)      JSON crudo, un archivo por rango de fechas
         ▼
@@ -52,7 +52,7 @@ API (api-sales-gamma.vercel.app)
 
 1. **Verificar identidad con LinkedIn** en Databricks Free Edition (perfil → verificación), si todavía no está hecho — sin esto, el acceso saliente a internet está restringido y la ingesta no va a poder llamar a la API.
 2. Conectar este repo como **Git folder** en el Workspace de Databricks.
-3. Correr `src/etl/etl_setup_secret_scope.py` **a mano, una sola vez** (nunca se agenda en el Job): crea el secret scope `kiosco_secrets` y guarda ahí la API key de `api_sales`.
+3. La API key de `api_sales` se guarda como secreto de Unity Catalog, con clics y sin código. Como el secreto vive dentro del esquema `landing`, se crea después del job de setup: ver el paso 4 de **Cómo desplegarlo**, más abajo.
 
 ### Orden de los notebooks, si se corren a mano
 
@@ -92,7 +92,10 @@ Las 5 dimensiones corren en paralelo porque no dependen entre sí, y son justo l
 1. En el Git folder del workspace, abrir `databricks.yml`.
 2. Hacer clic en el ícono de *deployments*, elegir el target `dev` y apretar **Deploy**. Confirmar con **Deploy** otra vez.
 3. En el panel **Bundle resources**, correr `kiosco_setup_ddl` con el ícono de play. Una sola vez.
-4. Correr `kiosco_pipeline_diario` para la primera carga. Desde ahí corre solo todos los días.
+4. Crear el secreto con la API key: en **Catalog**, entrar a `kiosco_la_esquina` y después a `landing`, y usar **Create** > **Secret**. Nombre: `api_key_ventas`. Valor: la API key de `api_sales`. Una sola vez.
+5. Correr `kiosco_pipeline_diario` para la primera carga. Desde ahí corre solo todos los días.
+
+Leer un secreto de Unity Catalog en serverless pide la versión 4 o superior del entorno. Si la extracción falla por el parámetro `catalog`, subir la versión desde el panel **Environment** del notebook.
 
 Si la opción de desplegar bundles no aparece en Free Edition, el plan B es crear los dos Jobs a mano en **Jobs & Pipelines**, copiando las tareas y dependencias de `databricks.yml`.
 
@@ -110,7 +113,9 @@ Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spar
 | Cortar el Job si falla un control de calidad | `assert_true(condición, 'mensaje')` |
 | Pasos intermedios validables | Vistas temporales, una por transformación |
 
-Solo dos notebooks siguen en Python, porque hacen un pedido HTTP y SQL no puede llamar a una API externa: `etl_setup_secret_scope.py` (crea el secret scope) y `etl_extraer_api_a_landing.py` (pide los datos a la API y guarda el JSON tal cual). Ninguno de los dos transforma datos.
+Solo un notebook del pipeline sigue en Python: `etl_extraer_api_a_landing.py`, que pide los datos a la API y guarda el JSON tal cual. Hace un pedido HTTP, y SQL no puede llamar a una API externa. No transforma datos.
+
+`etl_setup_secret_scope.py` queda de respaldo hasta confirmar que el secreto de Unity Catalog funciona. Guarda la key en un secret scope clásico, que la extracción ya no lee: usarlo implicaría volver a la línea anterior de la extracción.
 
 ## Verificación
 
