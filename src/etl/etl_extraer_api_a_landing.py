@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # ETL · Extraer de la API hacia landing
 # MAGIC
-# MAGIC **Este es el único notebook en Python del proyecto.** El
+# MAGIC **Este es uno de los dos únicos notebooks en Python del proyecto.** El
 # MAGIC resto es SQL puro. Acá no hay forma de evitarlo: hay que hacer un pedido
 # MAGIC HTTP a la API de ventas, y SQL no puede llamar a una API externa. El
 # MAGIC Python se limita a eso: pedir los datos y guardar el JSON tal cual llega.
