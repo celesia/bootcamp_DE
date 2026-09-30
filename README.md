@@ -115,8 +115,6 @@ Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spar
 
 Solo un notebook del pipeline sigue en Python: `etl_extraer_api_a_landing.py`, que pide los datos a la API y guarda el JSON tal cual. Hace un pedido HTTP, y SQL no puede llamar a una API externa. No transforma datos.
 
-`etl_setup_secret_scope.py` queda de respaldo hasta confirmar que el secreto de Unity Catalog funciona. Guarda la key en un secret scope clásico, que la extracción ya no lee: usarlo implicaría volver a la línea anterior de la extracción.
-
 ## Verificación
 
 Se corrió el pipeline completo con Spark local y Delta, con modo ANSI activado igual que serverless, contra datos reales de la API (del 1 al 26 de septiembre de 2026). La carga a bronze se probó con una versión anterior basada en `read_files()`. La actual usa `COPY INTO`, que solo existe en Databricks, así que ese paso se confirma en el workspace. Los pasos de silver en adelante son los mismos que se probaron.
