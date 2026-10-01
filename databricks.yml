@@ -1,30 +1,9 @@
-# Orquestación del proyecto como código (Declarative Automation Bundle,
-# antes llamado Databricks Asset Bundle).
-#
-# Define dos Jobs:
-#   - kiosco_setup: crea catálogo, esquemas, volumen, tablas y vistas.
-#     Se corre a mano UNA sola vez, antes de la primera corrida del pipeline.
-#   - kiosco_pipeline: el pipeline completo, programado todos los días.
-#
-# Se despliega desde el Git folder del workspace (botón "Deploy" del
-# bundle), sin instalar nada. Ninguna tarea declara cluster: todas corren
-# en compute serverless.
-#
-# La API key NO está acá: es un secreto de Unity Catalog
-# (kiosco_la_esquina.landing.api_key_ventas) que se crea a mano desde
-# Catalog, una sola vez, después de correr kiosco_setup_ddl.
-
 bundle:
   name: kiosco_la_esquina
 
 resources:
   jobs:
 
-    # ------------------------------------------------------------------
-    # Setup: solo DDL. En serie a propósito: se corre una vez, la
-    # velocidad no importa, y así el catálogo y los esquemas existen
-    # antes que las tablas, y las tablas de gold antes que las vistas.
-    # ------------------------------------------------------------------
     kiosco_setup:
       name: kiosco_setup_ddl
       description: >
@@ -87,14 +66,6 @@ resources:
           notebook_task:
             notebook_path: ./src/ddl/ddl_semantica_vistas.sql
 
-    # ------------------------------------------------------------------
-    # Pipeline diario.
-    #
-    # Las 5 dimensiones no dependen entre sí y corren en paralelo: son
-    # exactamente las 5 tareas simultáneas que permite Free Edition. La
-    # fact espera a las 5 (orden Kimball). Cada tarea de calidad hace
-    # assert_true(): si falla, corta la cadena y la capa siguiente no corre.
-    # ------------------------------------------------------------------
     kiosco_pipeline:
       name: kiosco_pipeline_diario
       description: >
@@ -102,16 +73,11 @@ resources:
         con controles de calidad entre capas.
       max_concurrent_runs: 1
 
-      # Todos los días a las 6 de la mañana, hora de Uruguay. La extracción
-      # pide hasta ayer, así que a esa hora el día anterior ya está cerrado.
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: America/Montevideo
         pause_status: UNPAUSED
 
-      # El Job le pasa este parámetro a todas las tareas. Lo usa la carga a
-      # bronze, que lo guarda en la columna _run_id de cada fila para saber
-      # qué corrida la cargó. Las tareas que no lo usan lo ignoran.
       parameters:
         - name: run_id
           default: "{{job.run_id}}"
@@ -121,9 +87,6 @@ resources:
           description: Pide a la API los días que faltan y guarda el JSON crudo en landing.
           notebook_task:
             notebook_path: ./src/etl/etl_extraer_api_a_landing.py
-          # Un reintento si la API falla por algo transitorio. Es seguro
-          # reintentar: el archivo de landing se llama por rango de fechas,
-          # así que repetir el pedido sobreescribe el mismo archivo.
           max_retries: 1
           min_retry_interval_millis: 300000
 
