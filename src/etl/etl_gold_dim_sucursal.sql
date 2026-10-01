@@ -1,12 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # ETL · gold.dim_sucursal (SCD Tipo 1)
--- MAGIC
--- MAGIC `MERGE`: si cambia algo de una sucursal ya conocida, se sobrescribe sin
--- MAGIC conservar el valor anterior. No hace falta historial acá.
-
--- COMMAND ----------
-
 MERGE INTO kiosco_la_esquina.gold.dim_sucursal AS destino
 USING (
   SELECT DISTINCT
@@ -26,5 +18,4 @@ WHEN NOT MATCHED THEN INSERT (sucursal_sk, sucursal_nombre, ciudad, departamento
 
 -- COMMAND ----------
 
--- Tienen que ser exactamente 5. Si aparecen más, la normalización de nombres en silver no está funcionando.
 SELECT * FROM kiosco_la_esquina.gold.dim_sucursal ORDER BY sucursal_nombre;

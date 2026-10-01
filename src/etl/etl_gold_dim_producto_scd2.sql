@@ -1,31 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # ETL · gold.dim_producto (SCD Tipo 2 sobre `precio_lista`)
--- MAGIC
--- MAGIC Reconstruye el historial completo de versiones de precio a partir de todo
--- MAGIC silver (no solo lo nuevo de esta corrida). Hace falta porque una sola
--- MAGIC corrida de backfill puede traer varios cambios de precio juntos, y el
--- MAGIC patrón de "cerrar la vigente + insertar la nueva" del curso está pensado
--- MAGIC para un cambio por vez.
--- MAGIC
--- MAGIC **Paso 1 (MERGE):** si la versión que hoy figura como vigente en la
--- MAGIC dimensión dejó de serlo, se la cierra con el `valid_to` que ya viene
--- MAGIC calculado en la reconstrucción — no se asume que el cambio nuevo es el único.
--- MAGIC
--- MAGIC **Paso 2 (INSERT):** se agregan todas las versiones que todavía no existen
--- MAGIC en la dimensión (comparando por `producto_sk`), sea una o varias.
--- MAGIC
--- MAGIC **Limitación documentada:** el `valid_from` de cada versión es la fecha de
--- MAGIC la primera *venta* a ese precio. Si un producto no se vendió el día que
--- MAGIC subió, la versión se detecta recién con la primera venta posterior. Solo
--- MAGIC vemos el precio a través de las ventas, no hay un feed de catálogo aparte.
-
--- COMMAND ----------
-
--- MAGIC %md ### Reconstruir el historial completo de versiones desde silver
-
--- COMMAND ----------
-
 CREATE OR REPLACE TEMPORARY VIEW dim_producto_versiones AS
 WITH precios_por_dia AS (
   SELECT DISTINCT producto_id, producto_nombre, categoria, precio_lista, DATE(fecha_hora) AS fecha
@@ -47,9 +20,6 @@ con_fin AS (
   FROM inicios_de_version
 )
 SELECT
-  -- El hash se ancla a CAST(valid_from AS DATE) explícitamente: la versión
-  -- empieza un día (esa es su granularidad real), y así el hash no depende
-  -- de si en este punto valid_from es DATE o ya fue casteado a TIMESTAMP.
   md5(concat_ws('|', CAST(producto_id AS STRING), CAST(CAST(valid_from AS DATE) AS STRING))) AS producto_sk,
   producto_id,
   producto_nombre,
@@ -71,10 +41,6 @@ ORDER BY producto_id;
 
 -- COMMAND ----------
 
--- MAGIC %md ### Paso 1: cerrar la versión vigente si el historial dice que ya no lo es
-
--- COMMAND ----------
-
 MERGE INTO kiosco_la_esquina.gold.dim_producto AS destino
 USING dim_producto_versiones AS origen
 ON  destino.producto_id = origen.producto_id
@@ -86,10 +52,6 @@ WHEN MATCHED AND origen.is_current = false THEN UPDATE SET
 
 -- COMMAND ----------
 
--- MAGIC %md ### Paso 2: insertar las versiones que todavía no existen
-
--- COMMAND ----------
-
 INSERT INTO kiosco_la_esquina.gold.dim_producto
   (producto_sk, producto_id, producto_nombre, categoria, precio_lista, valid_from, valid_to, is_current)
 SELECT v.producto_sk, v.producto_id, v.producto_nombre, v.categoria, v.precio_lista,
@@ -97,10 +59,6 @@ SELECT v.producto_sk, v.producto_id, v.producto_nombre, v.categoria, v.precio_li
 FROM dim_producto_versiones v
 LEFT ANTI JOIN kiosco_la_esquina.gold.dim_producto d
   ON v.producto_sk = d.producto_sk;
-
--- COMMAND ----------
-
--- MAGIC %md ### Verificación: esta consulta tiene que volver vacía (nunca más de una versión vigente por producto)
 
 -- COMMAND ----------
 

@@ -1,20 +1,6 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # Calidad · Gold
--- MAGIC
--- MAGIC Última red de seguridad del pipeline, después de cargar la fact. Primero
--- MAGIC muestra el resultado de todos los controles. Después, un `assert_true()`
--- MAGIC por control: el que no se cumpla corta la tarea del Job.
-
--- COMMAND ----------
-
--- MAGIC %md ### Resultado de los controles
-
--- COMMAND ----------
-
 CREATE OR REPLACE TEMPORARY VIEW controles_gold AS
 SELECT
-  -- Filas de la fact sin match en alguna dimensión (FK huérfana)
   (SELECT COUNT(*)
    FROM kiosco_la_esquina.gold.fact_ventas f
    LEFT JOIN kiosco_la_esquina.gold.dim_tiempo      t  ON f.tiempo_sk      = t.tiempo_sk
@@ -25,37 +11,29 @@ SELECT
    WHERE t.tiempo_sk IS NULL OR s.sucursal_sk IS NULL OR p.producto_sk IS NULL
       OR e.empleado_sk IS NULL OR tr.transaccion_sk IS NULL)                 AS fks_huerfanas,
 
-  -- Productos con más de una versión vigente en la SCD 2
   (SELECT COUNT(*) FROM (
      SELECT producto_id FROM kiosco_la_esquina.gold.dim_producto
      WHERE is_current = true
      GROUP BY producto_id HAVING COUNT(*) > 1
    ))                                                                        AS productos_con_2_vigentes,
 
-  -- Vendedores con más de una versión vigente en la SCD 2
   (SELECT COUNT(*) FROM (
      SELECT vendedor_id FROM kiosco_la_esquina.gold.dim_empleado
      WHERE is_current = true AND vendedor_id IS NOT NULL
      GROUP BY vendedor_id HAVING COUNT(*) > 1
    ))                                                                        AS vendedores_con_2_vigentes,
 
-  -- row_hash repetido en la fact
   (SELECT COUNT(*) FROM (
      SELECT row_hash FROM kiosco_la_esquina.gold.fact_ventas
      GROUP BY row_hash HAVING COUNT(*) > 1
    ))                                                                        AS row_hash_repetidos,
 
-  -- Reconciliación: silver - fact tiene que ser exactamente lo excluido
   (SELECT COUNT(*) FROM kiosco_la_esquina.silver.ventas)                     AS filas_silver,
   (SELECT COUNT(*) FROM kiosco_la_esquina.gold.fact_ventas)                  AS filas_fact,
   (SELECT COUNT(*) FROM kiosco_la_esquina.silver.ventas
    WHERE cantidad <= 0 AND estado_venta = 'aprobada')                        AS filas_excluidas;
 
 SELECT * FROM controles_gold;
-
--- COMMAND ----------
-
--- MAGIC %md ### Gates
 
 -- COMMAND ----------
 
@@ -83,7 +61,6 @@ FROM controles_gold;
 
 -- COMMAND ----------
 
--- Si la diferencia no cierra, se perdieron o se duplicaron ventas entre silver y gold
 SELECT assert_true(filas_silver - filas_fact = filas_excluidas,
   'silver - fact no coincide con las filas excluidas: se perdieron o duplicaron ventas.') AS control_reconciliacion
 FROM controles_gold;

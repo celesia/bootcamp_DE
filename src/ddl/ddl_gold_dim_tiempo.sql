@@ -1,13 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # DDL · gold.dim_tiempo (SCD Tipo 0)
--- MAGIC
--- MAGIC Generada una sola vez, de forma combinatoria — nunca se recarga ni se
--- MAGIC actualiza. `tiempo_sk` usa el formato `YYYYMMDD` como entero: es estable,
--- MAGIC legible y no hace falta calcularlo con un hash.
-
--- COMMAND ----------
-
 CREATE TABLE IF NOT EXISTS kiosco_la_esquina.gold.dim_tiempo (
   tiempo_sk        INT     COMMENT 'YYYYMMDD, ej. 20260915',
   fecha             DATE,

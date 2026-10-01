@@ -1,14 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # Smoke test · Capa semántica
--- MAGIC
--- MAGIC Última tarea del Job. Las vistas no se cargan (reflejan gold solas), así
--- MAGIC que lo único que hace falta es confirmar que responden y no vuelven
--- MAGIC vacías. Si alguna vuelve vacía, `assert_true()` corta la tarea y el Job
--- MAGIC queda marcado como fallido.
-
--- COMMAND ----------
-
 SELECT 'vw_ventas_diarias_por_sucursal' AS vista, COUNT(*) AS filas FROM kiosco_la_esquina.semantica.vw_ventas_diarias_por_sucursal
 UNION ALL
 SELECT 'vw_top_productos', COUNT(*) FROM kiosco_la_esquina.semantica.vw_top_productos

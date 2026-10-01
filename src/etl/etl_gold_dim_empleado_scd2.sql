@@ -1,32 +1,10 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # ETL · gold.dim_empleado (SCD Tipo 2 sobre sucursal asignada)
--- MAGIC
--- MAGIC Mismo patrón de dos pasos que `dim_producto`, pero versionando la
--- MAGIC sucursal en vez del precio. `sucursal_nombre` queda como atributo propio
--- MAGIC (no un FK a `dim_sucursal`) para no crear una dependencia entre dos
--- MAGIC dimensiones que se cargan en paralelo.
--- MAGIC
--- MAGIC Además asegura una fila "desconocido" (`empleado_sk = '-1'`) para las
--- MAGIC ventas donde `vendedor_id` viene nulo desde la fuente. Sin esto, esas
--- MAGIC ventas quedarían sin FK válida hacia `dim_empleado` en la fact.
-
--- COMMAND ----------
-
--- MAGIC %md ### Fila "desconocido" (se inserta una sola vez, no depende de silver)
-
--- COMMAND ----------
-
 MERGE INTO kiosco_la_esquina.gold.dim_empleado AS destino
 USING (SELECT '-1' AS empleado_sk) AS origen
 ON destino.empleado_sk = origen.empleado_sk
 WHEN NOT MATCHED THEN INSERT
   (empleado_sk, vendedor_id, vendedor_nombre, sucursal_nombre, valid_from, valid_to, is_current)
   VALUES ('-1', NULL, 'Desconocido', NULL, TIMESTAMP'1900-01-01', TIMESTAMP'9999-12-31', true);
-
--- COMMAND ----------
-
--- MAGIC %md ### Reconstruir el historial de sucursal por vendedor
 
 -- COMMAND ----------
 
@@ -65,15 +43,10 @@ FROM con_fin;
 
 -- COMMAND ----------
 
--- Los vendedores con traslado real (Lucía, Diego, Camila) tienen que aparecer con 2 versiones.
 SELECT vendedor_id, vendedor_nombre, COUNT(*) AS versiones
 FROM dim_empleado_versiones
 GROUP BY vendedor_id, vendedor_nombre
 ORDER BY vendedor_id;
-
--- COMMAND ----------
-
--- MAGIC %md ### Paso 1: cerrar la versión vigente si ya no lo es
 
 -- COMMAND ----------
 
@@ -88,10 +61,6 @@ WHEN MATCHED AND origen.is_current = false THEN UPDATE SET
 
 -- COMMAND ----------
 
--- MAGIC %md ### Paso 2: insertar las versiones que todavía no existen
-
--- COMMAND ----------
-
 INSERT INTO kiosco_la_esquina.gold.dim_empleado
   (empleado_sk, vendedor_id, vendedor_nombre, sucursal_nombre, valid_from, valid_to, is_current)
 SELECT v.empleado_sk, v.vendedor_id, v.vendedor_nombre, v.sucursal_nombre,
@@ -99,10 +68,6 @@ SELECT v.empleado_sk, v.vendedor_id, v.vendedor_nombre, v.sucursal_nombre,
 FROM dim_empleado_versiones v
 LEFT ANTI JOIN kiosco_la_esquina.gold.dim_empleado d
   ON v.empleado_sk = d.empleado_sk;
-
--- COMMAND ----------
-
--- MAGIC %md ### Verificación: esta consulta tiene que volver vacía
 
 -- COMMAND ----------
 

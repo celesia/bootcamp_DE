@@ -1,20 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # DDL · Catálogo y esquemas
--- MAGIC
--- MAGIC Solo define estructura. No inserta ni transforma ningún dato — eso vive en `src/etl`.
--- MAGIC Usa `IF NOT EXISTS` en todo, así que correrlo de nuevo nunca rompe nada.
--- MAGIC
--- MAGIC | Esquema | Qué guarda |
--- MAGIC |---|---|
--- MAGIC | `landing` | Volumen con el JSON crudo tal cual lo devuelve la API |
--- MAGIC | `bronze` | Datos crudos en STRING, inmutables, solo se agregan filas |
--- MAGIC | `silver` | Datos limpios, tipados y deduplicados — fuente de verdad |
--- MAGIC | `gold` | Modelo dimensional (esquema estrella + junk dimension) |
--- MAGIC | `semantica` | Vistas de solo lectura para consultas de negocio |
-
--- COMMAND ----------
-
 CREATE CATALOG IF NOT EXISTS kiosco_la_esquina
 COMMENT 'Proyecto final del bootcamp: ventas de Kiosco La Esquina (Uruguay)';
 
@@ -34,11 +18,6 @@ COMMENT 'Modelo dimensional: dimensiones + fact, listo para consultarse sin tran
 
 CREATE SCHEMA IF NOT EXISTS kiosco_la_esquina.semantica
 COMMENT 'Vistas de solo lectura sobre gold. Nunca tablas, nunca escritura';
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC Verificación rápida: tienen que aparecer los 5 esquemas.
 
 -- COMMAND ----------
 

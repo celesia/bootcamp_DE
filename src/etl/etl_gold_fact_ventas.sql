@@ -1,26 +1,4 @@
 -- Databricks notebook source
--- MAGIC %md
--- MAGIC # ETL · gold.fact_ventas
--- MAGIC
--- MAGIC Se corre **después** de las 5 dimensiones (orden Kimball): si se corriera
--- MAGIC antes, las FKs no tendrían contra qué resolverse.
--- MAGIC
--- MAGIC El join a `dim_producto` y `dim_empleado` (las dos SCD Tipo 2) es **por
--- MAGIC vigencia** (`fecha_hora BETWEEN valid_from AND valid_to`), no por "la
--- MAGIC versión actual". Así una venta vieja siempre apunta al precio o a la
--- MAGIC sucursal que regían en ese momento, no a los de hoy.
--- MAGIC
--- MAGIC Regla de negocio: `cantidad <= 0` con `estado_venta = 'aprobada'` se
--- MAGIC excluye acá (dato sucio, no una venta real). Silver la conserva, gold no.
--- MAGIC La última celda muestra cuántas se excluyeron, y `etl_calidad_gold.sql`
--- MAGIC controla que silver menos la fact dé exactamente esa cantidad.
-
--- COMMAND ----------
-
--- MAGIC %md ### Resolver las FKs de cada venta
-
--- COMMAND ----------
-
 CREATE OR REPLACE TEMPORARY VIEW fact_ventas_stage AS
 SELECT
   s.row_hash,
@@ -45,20 +23,10 @@ WHERE NOT (s.cantidad <= 0 AND s.estado_venta = 'aprobada');
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC ### Freno: toda venta tiene que haber encontrado su versión de producto
--- MAGIC Si esto falla, casi seguro es que `dim_producto` no se cargó antes que la fact.
-
--- COMMAND ----------
-
 SELECT assert_true(
   (SELECT COUNT(*) FROM fact_ventas_stage WHERE producto_sk IS NULL) = 0,
   'Hay ventas sin versión vigente en dim_producto. Cargar dim_producto antes que la fact.'
 ) AS gate_producto;
-
--- COMMAND ----------
-
--- MAGIC %md ### `MERGE` a la fact
 
 -- COMMAND ----------
 
@@ -73,10 +41,6 @@ WHEN NOT MATCHED THEN INSERT (
   origen.empleado_sk, origen.transaccion_sk, origen.cantidad, origen.precio_unitario,
   origen.descuento, origen.venta_neta, current_timestamp()
 );
-
--- COMMAND ----------
-
--- MAGIC %md ### Resumen de la carga
 
 -- COMMAND ----------
 
