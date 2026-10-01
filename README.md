@@ -2,7 +2,6 @@
 
 Proyecto final del bootcamp de ingeniería de datos. Pipeline completo Bronze → Silver → Gold en Databricks, con MERGE, SCD Tipo 2, validaciones de calidad y workflow automatizado, sobre datos de ventas de una cadena ficticia de kioscos en Uruguay.
 
-**[Tu nombre]** · [tu LinkedIn]
 
 ## Qué hace
 
