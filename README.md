@@ -49,9 +49,8 @@ API (api-sales-gamma.vercel.app)
 
 ### Día 0 — una sola vez
 
-1. **Verificar identidad con LinkedIn** en Databricks Free Edition (perfil → verificación), si todavía no está hecho — sin esto, el acceso saliente a internet está restringido y la ingesta no va a poder llamar a la API.
-2. Conectar este repo como **Git folder** en el Workspace de Databricks.
-3. La API key de `api_sales` se guarda como secreto de Unity Catalog, con clics y sin código. Como el secreto vive dentro del esquema `landing`, se crea después del job de setup: ver el paso 4 de **Cómo desplegarlo**, más abajo.
+1. Conectar este repo como **Git folder** en el Workspace de Databricks.
+2. La API key de `api_sales` se guarda como secreto de Unity Catalog, con clics y sin código. Como el secreto vive dentro del esquema `landing`, se crea después del job de setup: ver el paso 4 de **Cómo desplegarlo**, más abajo.
 
 ### Orden de los notebooks, si se corren a mano
 
@@ -98,38 +97,6 @@ Leer un secreto de Unity Catalog en serverless pide la versión 4 o superior del
 
 Si la opción de desplegar bundles no aparece en Free Edition, el plan B es crear los dos Jobs a mano en **Jobs & Pipelines**, copiando las tareas y dependencias de `databricks.yml`.
 
-## Por qué SQL puro
-
-Toda la transformación está escrita en SQL de Databricks, sin PySpark ni `spark.sql()` desde Python. Las piezas que suelen resolverse con Python se hacen con SQL nativo:
-
-| Necesidad | Cómo se resuelve en SQL |
-|---|---|
-| Cargar archivos nuevos sin repetir los ya cargados | `COPY INTO`, que guarda la lista en el log de la tabla |
-| Leer todo el JSON como texto | `FORMAT_OPTIONS ('primitivesAsString' = 'true')` |
-| Pasar de un array por archivo a una fila por venta | `inline(data)` |
-| Saber de qué archivo vino cada fila | `_metadata.file_path` |
-| Pasar el `run_id` del Job | `CREATE WIDGET` + `:run_id` |
-| Cortar el Job si falla un control de calidad | `assert_true(condición, 'mensaje')` |
-| Pasos intermedios validables | Vistas temporales, una por transformación |
-
-Solo un notebook del pipeline sigue en Python: `etl_extraer_api_a_landing.py`, que pide los datos a la API y guarda el JSON tal cual. Hace un pedido HTTP, y SQL no puede llamar a una API externa. No transforma datos.
-
-## Verificación
-
-Se corrió el pipeline completo con Spark local y Delta, con modo ANSI activado igual que serverless, contra datos reales de la API (del 1 al 26 de septiembre de 2026). La carga a bronze se probó con una versión anterior basada en `read_files()`. La actual usa `COPY INTO`, que solo existe en Databricks, así que ese paso se confirma en el workspace. Los pasos de silver en adelante son los mismos que se probaron.
-
-| Resultado | Valor |
-|---|---|
-| Filas en bronze | 3.610 |
-| Filas en silver (después de deduplicar) | 3.580 |
-| Filas en `fact_ventas` | 3.505 |
-| Excluidas por `cantidad <= 0` en ventas aprobadas | 75 |
-| Productos con historial de precio (SCD 2) | 16 de 16 |
-| Vendedores con traslado de sucursal (SCD 2) | 3 |
-| Controles de calidad | Todos en verde |
-| Segunda corrida completa | Mismos conteos (idempotente) |
-
-**Limitación conocida:** la API no manda un número de línea dentro del ticket. Cuando un mismo ticket tiene dos líneas del mismo producto con la misma cantidad y el mismo descuento, silver no puede distinguirlas de un duplicado de ingesta y se queda con una sola. Medido contra el generador: de las 30 filas descartadas, 12 eran duplicados reales y 18 eran ventas legítimas (0,5% del total).
 
 ## Datos de la fuente
 
